@@ -320,13 +320,13 @@ async def main():
         with db() as con:
             for i, title in enumerate(NOMINATIONS):
                 rows = con.execute(
-                    """SELECT c.name, COUNT(v.voter_id) AS votes
-                    FROM candidates c LEFT JOIN votes v ON v.candidate_id=c.id
+                    """SELECT c.name
+                    FROM candidates c
                     WHERE c.nomination=? AND c.approved=1
-                    GROUP BY c.id ORDER BY votes DESC, c.name LIMIT 10""", (i,)
+                    ORDER BY c.name LIMIT 10""", (i,)
                 ).fetchall()
                 if rows:
-                    lines = [f"{r['name']} — {r['votes']}" for r in rows]
+                    lines = [r["name"] for r in rows]
                     await message.answer(f"🏆 {title}\n" + "\n".join(lines))
                 else:
                     await message.answer(f"🏆 {title}\nПока нет одобренных кандидатов.")
