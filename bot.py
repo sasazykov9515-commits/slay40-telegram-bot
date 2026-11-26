@@ -1,6 +1,8 @@
 import asyncio
+import json
 import os
 import sqlite3
+import urllib.request
 from pathlib import Path
 
 from aiogram import Bot, Dispatcher, F
@@ -13,6 +15,8 @@ from aiogram.client.default import DefaultBotProperties
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 ADMIN_IDS = {int(x.strip()) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip().isdigit()}
 DB_PATH = os.getenv("DB_PATH", "slay40.sqlite3")
+SHEETS_WEB_APP_URL = os.getenv("SHEETS_WEB_APP_URL", "").strip()
+SHEETS_SECRET = os.getenv("SHEETS_SECRET", "").strip()
 
 NOMINATIONS = [
     "Король школы",
@@ -38,6 +42,25 @@ def db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+def send_vote_to_sheet(payload):
+    if not SHEETS_WEB_APP_URL or not SHEETS_SECRET:
+        return
+    payload["secret"] = SHEETS_SECRET
+    request = urllib.request.Request(
+        SHEETS_WEB_APP_URL,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            result = json.loads(response.read().decode("utf-8"))
+            if not result.get("ok"):
+                print("Google Sheets rejected vote:", result.get("error", "unknown error"))
+    except Exception as exc:
+        print("Google Sheets sync failed:", exc)
+
 
 def init_db():
     with db() as con:
@@ -187,6 +210,21 @@ async def main():
                 ON CONFLICT(voter_id, nomination) DO UPDATE SET
                 candidate_id=excluded.candidate_id, updated_at=CURRENT_TIMESTAMP""",
                 (call.from_user.id, nom, candidate_id)
+            )
+            voter = con.execute(
+                "SELECT full_name, school_class FROM users WHERE telegram_id=?",
+                (call.from_user.id,)
+            ).fetchone()
+        if voter and SHEETS_WEB_APP_URL and SHEETS_SECRET:
+            await asyncio.to_thread(
+                send_vote_to_sheet,
+                {
+                    "telegram_id": call.from_user.id,
+                    "name": voter["full_name"],
+                    "class_name": voter["school_class"],
+                    "nomination": NOMINATIONS[nom],
+                    "candidate": candidate["name"],
+                },
             )
         await call.answer("Голос учтён! Его можно изменить позже.", show_alert=True)
 
