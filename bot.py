@@ -106,6 +106,8 @@ async def main():
         raise RuntimeError("Не задан BOT_TOKEN в переменных окружения.")
     init_db()
     bot = Bot(BOT_TOKEN, default=DefaultBotProperties())
+    # This bot uses long polling; remove any webhook left by an earlier setup.
+    await bot.delete_webhook(drop_pending_updates=True)
     dp = Dispatcher()
 
     @dp.message(Command("start"))
